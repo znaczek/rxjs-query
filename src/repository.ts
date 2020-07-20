@@ -1,56 +1,58 @@
-import { BehaviorSubject, EMPTY, Observable, Subject } from 'rxjs';
-import { catchError, filter, scan, switchMap, takeUntil } from 'rxjs/operators';
-import { DeepPartial } from './deep-partial';
+import { BehaviorSubject, EMPTY, merge, Observable, Subject } from 'rxjs';
+import { catchError, filter, map, scan, switchMap, takeUntil, tap } from 'rxjs/operators';
 import { isEqual } from 'lodash';
+import { isFunction } from 'rxjs/internal-compatibility';
 
 /**
  * TODO
- * - canceling on reset/cancel
- * - POST (mutations)
- * - list fetch
- * - infinite fetch
- * - clean subscription after usage with remebering last data
- * - test with progress
+ * - what will happen, when unsubscribed (0 subscribtions fo "$") - will it loose data?
+ * - try to unsubscribe, when "$" subscribtions are at size of 0
  * - Tests
  * - Refactor
  */
-export class Repository<T, P> {
-  public actions: Actions<P>;
+export class Repository<P, R,
+  SH extends (response: R, state: SuccessPayload<R, SH>, P) => SuccessPayload<R, SH>,
+  EH extends (error: any) => ErrorPayload<EH>> {
+  public actions: Actions<TypedPayload<P>>;
 
-  public get events(): Events<T, P> {
+  public get events(): Events<TypedPayload<P>, SuccessPayload<R, SH>, ErrorPayload<EH>> {
     return this._events;
   }
 
-  public get $(): Observable<RepositoryData<T>> {
-    return this.data$.asObservable();
+  public get $(): Observable<RepositoryData<SuccessPayload<R, SH>, ErrorPayload<EH>>> {
+    return this.data$.asObservable().pipe(
+      takeUntil(this.close$),
+    );
   }
 
-  private config: Config<T, P>;
-  private cacheChecker: (a: P, b: P) => boolean;
+  private config: Config<P, R, SH, EH>;
+  private cacheChecker: (a: TypedPayload<P>, b: TypedPayload<P>) => boolean;
 
-  private data$: BehaviorSubject<RepositoryData<T>>;
+  private data$: BehaviorSubject<RepositoryData<SuccessPayload<R, SH>, ErrorPayload<EH>>>;
 
   private _events = {
-    start$: new Subject<P>(),
+    start$: new Subject<TypedPayload<P>>(),
     progress$: new Subject<number>(),
-    success$: new Subject<T>(),
-    successCached$: new Subject<T>(),
-    error$: new Subject<any>(),
+    success$: new Subject<SuccessPayload<R, SH>>(),
+    successCached$: new Subject<SuccessPayload<R, SH>>(),
+    error$: new Subject<ErrorPayload<EH>>(),
+    reset$: new Subject<void>(),
+    cancel$: new Subject<void>(),
   };
 
   private lastCallTimestamp = 0;
 
   private close$ = new Subject<void>();
 
-  constructor(arg: Caller<T, P> | DeepPartial<Config<T, P>>) {
-    if (typeof arg === 'function') {
+  constructor(arg: Caller<P, R> | Partial<Config<P, R, SH, EH>>) {
+    if (isFunction(arg)) {
       this.config = new Config({caller: arg});
     } else {
       this.config = new Config(arg);
     }
 
     this.cacheChecker = this.config.cache ? isEqual :
-      typeof this.config.shouldCache === 'function' ? this.config.shouldCache :
+      typeof isFunction(this.config.shouldCache) ? this.config.shouldCache :
         null;
 
     this.createDataStream();
@@ -60,17 +62,12 @@ export class Repository<T, P> {
 
   private createDataStream() {
     this.data$ = new BehaviorSubject(new RepositoryData(this.config.initData));
-
-    this.data$.pipe(
-      takeUntil(this.close$),
-      // tap((v) => console.log('DATA', v))
-    ).subscribe();
   }
 
   private subscribeToEvents() {
-    this._events.start$
+    const startSource$ = this._events.start$
       .pipe(
-        scan((acc: { payload: P, shouldUseCache: boolean }, current: P) => {
+        scan((acc: { payload: TypedPayload<P>, shouldUseCache: boolean }, current: TypedPayload<P>) => {
           const previousPayload = acc.payload;
 
           const shouldUseCache =
@@ -84,29 +81,68 @@ export class Repository<T, P> {
           return {payload: current, shouldUseCache};
         }, {payload: null, shouldUseCache: false}),
         filter(({shouldUseCache}) => !shouldUseCache),
-        switchMap(({payload}) => {
-          let callResult: Observable<T>;
+        tap(() => {
+          this.data$.next(new RepositoryData({
+            data: this.data$.getValue().data,
+            isPending: true,
+            error: null,
+          }));
+        }),
+        map(({payload}) => ({type: 'START', payload}))
+      );
+
+    const resetSource$ = merge(this._events.reset$, this._events.cancel$).pipe(
+      map(() => ({type: 'RESET'}))
+    );
+
+    merge(startSource$, resetSource$)
+      .pipe(
+        switchMap((action: {type: 'RESET'} | {type: 'START', payload: TypedPayload<P>}) => {
+          if (action.type === 'RESET') {
+            return EMPTY;
+          }
+
+          let callResult: Observable<R>;
           try {
-            callResult = this.config.caller(payload);
+            callResult = this.config.caller(action.payload);
           } catch (e) {
             console.error(e);
             callResult = EMPTY;
           }
           return callResult
             .pipe(
+              map((response) => {
+                if (isFunction(this.config.progressHandler)) {
+                  const progress = this.config.progressHandler(response);
+                  this._events.progress$.next(progress);
+                  return {response, payload: action.payload, isComplete: progress === null};
+                } else {
+                  return {response, payload: action.payload, isComplete: true};
+                }
+              }),
               catchError((error) => {
-                this._events.error$.next(error);
-                this.data$.next(new RepositoryData({error}));
+                const errorPayload: ErrorPayload<EH> = isFunction(this.config.errorHandler) ?
+                  this.config.errorHandler(error) :
+                  error;
+                this._events.error$.next(errorPayload);
+                this.data$.next(new RepositoryData({error: errorPayload}));
                 return EMPTY;
-              })
+              }),
             );
         }),
         takeUntil(this.close$),
+        filter(({isComplete}) => isComplete)
       )
-      .subscribe((data) => {
+      .subscribe(({response, payload}) => {
+        let data: SuccessPayload<R, SH>;
+        if (isFunction(this.config.successHandler)) {
+          data = this.config.successHandler(response, this.data$.getValue().data, payload);
+        } else {
+          data = response as SuccessPayload<R, SH>;
+        }
         this.lastCallTimestamp = Date.now();
         this._events.success$.next(data);
-        this.data$.next(new RepositoryData<T>({data}));
+        this.data$.next(new RepositoryData({data}));
       });
   }
 
@@ -118,59 +154,32 @@ export class Repository<T, P> {
     this.actions = {
       start: (payload) => {
         this._events.start$.next(payload);
-        this.data$.next(new RepositoryData<T>({
-          data: this.data$.getValue().data,
-          isPending: true,
+      },
+      reset: () => {
+        this._events.reset$.next();
+        this.data$.next(new RepositoryData());
+      },
+      cleanError: () => {
+        this.data$.next(new RepositoryData({
+          ...this.data$.getValue().data,
           error: null,
         }));
       },
-      reset: () => {
-      },
-      cleanError: () => {
-      },
       cancel: () => {
+        this._events.cancel$.next();
       },
     };
   }
 
 }
 
-type Caller<T, P> = (payload: P) => Observable<T>;
+export class RepositoryData<D, E> {
+  data: D;
+  progress: number;
+  isPending: boolean;
+  error: E;
 
-class Config<T, P> {
-  caller: Caller<T, P>;
-  initData: T = null;
-  cache = false;
-  shouldCache: (prev: P, next: P) => boolean = null;
-  cacheTimeout = 5000;
-
-  constructor(options: DeepPartial<Config<T, P>>) {
-    Object.assign(this, options);
-  }
-}
-
-interface Actions<P> {
-  start: (props: P) => void;
-  reset: () => void;
-  cleanError: () => void;
-  cancel: () => void;
-}
-
-interface Events<T, P> {
-  start$: Observable<P>;
-  progress$: Observable<number>;
-  success$: Observable<T>;
-  successCached$: Observable<T>;
-  error$: Observable<any>;
-}
-
-export class RepositoryData<T> {
-  data: T;
-  progress: number = null;
-  isPending = false;
-  error: any = null;
-
-  constructor(options: DeepPartial<RepositoryData<T>>) {
+  constructor(options?: Partial<RepositoryData<D, E>>) {
     options = options || {};
     this.data = options.data || null;
     this.progress = options.progress || null;
@@ -179,3 +188,42 @@ export class RepositoryData<T> {
   }
 
 }
+
+export class Config<P, R, SH, EH> {
+  caller: Caller<P, R>;
+  initData: SuccessPayload<R, SH>;
+  cache = false;
+  shouldCache: (prev: P, next: P) => boolean;
+  cacheTimeout = 5000;
+  progressHandler: (event: R) => number | null;
+  errorHandler: EH;
+  successHandler: SH;
+
+  constructor(options: Partial<Config<P, R, SH, EH>>) {
+    Object.assign(this, options);
+  }
+}
+
+type Caller<P, R> = (payload: TypedPayload<P>) => Observable<R>;
+
+interface Actions<P> {
+  start: (payload: P) => void;
+  reset: () => void;
+  cleanError: () => void;
+  cancel: () => void;
+}
+
+type ErrorPayload<EH> = EH extends (error: unknown) => infer E ? E : unknown;
+type SuccessPayload<R, SH> = SH extends (response: R, state: infer D, payload: any) => infer D ? D : R;
+
+interface Events<P, D, E> {
+  start$: Observable<P>;
+  progress$: Observable<number>;
+  success$: Observable<D>;
+  successCached$: Observable<D>;
+  error$: Observable<E>;
+  cancel$: Observable<void>;
+  reset$: Observable<void>;
+}
+
+type TypedPayload<P> = P extends object ? P : void;
