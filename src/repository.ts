@@ -7,12 +7,17 @@ import { isFunction } from 'rxjs/internal-compatibility';
  * TODO
  * - what will happen, when unsubscribed (0 subscribtions fo "$") - will it loose data?
  * - try to unsubscribe, when "$" subscribtions are at size of 0
- * - Tests
- * - Refactor
+ * - Improve typing - enable some defualt infered types
+ * - Tests, refactor
  */
-export class Repository<P, R,
-  SH extends (response: R, state: SuccessPayload<R, SH>, P) => SuccessPayload<R, SH>,
-  EH extends (error: any) => ErrorPayload<EH>> {
+export class Repository<
+  P, R = P,
+  SH extends (response: R, state: SuccessPayload<R, SH>, payload: TypedPayload<P>) => SuccessPayload<R, SH>
+    = (response: R, state: R, P) => R,
+  EH extends (error: any) => ErrorPayload<EH>
+    = (error: any) => unknown,
+  > {
+
   public actions: Actions<TypedPayload<P>>;
 
   public get events(): Events<TypedPayload<P>, SuccessPayload<R, SH>, ErrorPayload<EH>> {
@@ -26,10 +31,8 @@ export class Repository<P, R,
   }
 
   private config: Config<P, R, SH, EH>;
-  private cacheChecker: (a: TypedPayload<P>, b: TypedPayload<P>) => boolean;
-
+  private readonly cacheChecker: (a: TypedPayload<P>, b: TypedPayload<P>) => boolean;
   private data$: BehaviorSubject<RepositoryData<SuccessPayload<R, SH>, ErrorPayload<EH>>>;
-
   private _events = {
     start$: new Subject<TypedPayload<P>>(),
     progress$: new Subject<number>(),
@@ -39,9 +42,7 @@ export class Repository<P, R,
     reset$: new Subject<void>(),
     cancel$: new Subject<void>(),
   };
-
   private lastCallTimestamp = 0;
-
   private close$ = new Subject<void>();
 
   constructor(arg: Caller<P, R> | Partial<Config<P, R, SH, EH>>) {
@@ -50,11 +51,9 @@ export class Repository<P, R,
     } else {
       this.config = new Config(arg);
     }
-
     this.cacheChecker = this.config.cache ? isEqual :
       typeof isFunction(this.config.shouldCache) ? this.config.shouldCache :
         null;
-
     this.createDataStream();
     this.createActions();
     this.subscribeToEvents();
@@ -67,20 +66,6 @@ export class Repository<P, R,
   private subscribeToEvents() {
     const startSource$ = this._events.start$
       .pipe(
-        scan((acc: { payload: TypedPayload<P>, shouldUseCache: boolean }, current: TypedPayload<P>) => {
-          const previousPayload = acc.payload;
-
-          const shouldUseCache =
-            this.cacheChecker &&
-            this.cacheChecker(previousPayload, current) &&
-            this.lastCallTimestamp + this.config.cacheTimeout >= Date.now();
-
-          if (shouldUseCache) {
-            this._events.successCached$.next(this.data$.getValue().data);
-          }
-          return {payload: current, shouldUseCache};
-        }, {payload: null, shouldUseCache: false}),
-        filter(({shouldUseCache}) => !shouldUseCache),
         tap(() => {
           this.data$.next(new RepositoryData({
             data: this.data$.getValue().data,
@@ -88,6 +73,18 @@ export class Repository<P, R,
             error: null,
           }));
         }),
+        scan((acc: { payload: TypedPayload<P>, shouldUseCache: boolean }, current: TypedPayload<P>) => {
+          const previousPayload = acc.payload;
+          const shouldUseCache =
+            this.cacheChecker &&
+            this.cacheChecker(previousPayload, current) &&
+            this.lastCallTimestamp + this.config.cacheTimeout >= Date.now();
+          if (shouldUseCache) {
+            this._events.successCached$.next(this.data$.getValue().data);
+          }
+          return {payload: current, shouldUseCache};
+        }, {payload: null, shouldUseCache: false}),
+        filter(({shouldUseCache}) => !shouldUseCache),
         map(({payload}) => ({type: 'START', payload}))
       );
 
@@ -101,7 +98,6 @@ export class Repository<P, R,
           if (action.type === 'RESET') {
             return EMPTY;
           }
-
           let callResult: Observable<R>;
           try {
             callResult = this.config.caller(action.payload);
@@ -115,15 +111,15 @@ export class Repository<P, R,
                 if (isFunction(this.config.progressHandler)) {
                   const progress = this.config.progressHandler(response);
                   this._events.progress$.next(progress);
-                  return {response, payload: action.payload, isComplete: progress === null};
+                  return {response, payload: action.payload, isLast: progress === null};
                 } else {
-                  return {response, payload: action.payload, isComplete: true};
+                  return {response, payload: action.payload, isLast: true};
                 }
               }),
-              catchError((error) => {
+              catchError((response) => {
                 const errorPayload: ErrorPayload<EH> = isFunction(this.config.errorHandler) ?
-                  this.config.errorHandler(error) :
-                  error;
+                  this.config.errorHandler(response) :
+                  response.error || {};
                 this._events.error$.next(errorPayload);
                 this.data$.next(new RepositoryData({error: errorPayload}));
                 return EMPTY;
@@ -131,7 +127,7 @@ export class Repository<P, R,
             );
         }),
         takeUntil(this.close$),
-        filter(({isComplete}) => isComplete)
+        filter(({isLast}) => isLast)
       )
       .subscribe(({response, payload}) => {
         let data: SuccessPayload<R, SH>;
@@ -170,35 +166,26 @@ export class Repository<P, R,
       },
     };
   }
-
 }
 
-export class RepositoryData<D, E> {
-  data: D;
-  progress: number;
-  isPending: boolean;
-  error: E;
-
+export class RepositoryData<D, E = unknown> {
+  data: D = null;
+  progress: number = null;
+  isPending = false;
+  error: E = null;
   constructor(options?: Partial<RepositoryData<D, E>>) {
-    options = options || {};
-    this.data = options.data || null;
-    this.progress = options.progress || null;
-    this.isPending = options.isPending === true;
-    this.error = options.error || null;
+    Object.assign(this, options);
   }
-
 }
-
 export class Config<P, R, SH, EH> {
   caller: Caller<P, R>;
   initData: SuccessPayload<R, SH>;
   cache = false;
-  shouldCache: (prev: P, next: P) => boolean;
+  shouldCache: (prev: TypedPayload<P>, next: TypedPayload<P>) => boolean;
   cacheTimeout = 5000;
   progressHandler: (event: R) => number | null;
   errorHandler: EH;
   successHandler: SH;
-
   constructor(options: Partial<Config<P, R, SH, EH>>) {
     Object.assign(this, options);
   }
@@ -214,6 +201,7 @@ interface Actions<P> {
 }
 
 type ErrorPayload<EH> = EH extends (error: unknown) => infer E ? E : unknown;
+
 type SuccessPayload<R, SH> = SH extends (response: R, state: infer D, payload: any) => infer D ? D : R;
 
 interface Events<P, D, E> {
