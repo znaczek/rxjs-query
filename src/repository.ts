@@ -5,17 +5,15 @@ import { isFunction } from 'rxjs/internal-compatibility';
 
 /**
  * TODO
- * - what will happen, when unsubscribed (0 subscribtions fo "$") - will it loose data?
- * - try to unsubscribe, when "$" subscribtions are at size of 0
- * - Improve typing - enable some defualt infered types
- * - Tests, refactor
+ * - what will happen, when unsubscribed (0 subscriptions for "$") - will it loose data?
+ * - try to unsubscribe, when "$" subscriptions are at size of 0
  */
 export class Repository<
   P, R = P,
   SH extends (response: R, state: SuccessPayload<R, SH>, payload: TypedPayload<P>) => SuccessPayload<R, SH>
     = (response: R, state: R, P) => R,
-  EH extends (error: any) => ErrorPayload<EH>
-    = (error: any) => unknown,
+  EH extends (error: unknown) => ErrorPayload<EH>
+    = (error: unknown) => unknown,
   > {
 
   public actions: Actions<TypedPayload<P>>;
@@ -52,7 +50,7 @@ export class Repository<
       this.config = new Config(arg);
     }
     this.cacheChecker = this.config.cache ? isEqual :
-      typeof isFunction(this.config.shouldCache) ? this.config.shouldCache :
+      isFunction(this.config.shouldCache) ? this.config.shouldCache :
         null;
     this.createDataStream();
     this.createActions();
@@ -202,7 +200,7 @@ interface Actions<P> {
 
 type ErrorPayload<EH> = EH extends (error: unknown) => infer E ? E : unknown;
 
-type SuccessPayload<R, SH> = SH extends (response: R, state: infer D, payload: any) => infer D ? D : R;
+type SuccessPayload<R, SH> = SH extends (response: R, state: infer D, payload: unknown) => infer D ? D : R;
 
 interface Events<P, D, E> {
   start$: Observable<P>;
@@ -214,4 +212,5 @@ interface Events<P, D, E> {
   reset$: Observable<void>;
 }
 
-type TypedPayload<P> = P extends object ? P : void;
+// eslint-disable-next-line @typescript-eslint/ban-types
+type TypedPayload<P> = P extends object? P : void;

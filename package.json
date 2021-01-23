@@ -3,7 +3,9 @@
   "version": "0.0.1",
   "main": "index.js",
   "scripts": {
-    "test": "karma start"
+    "test": "karma start",
+    "lint": "eslint src",
+    "build": "tsc --project tsconfig.build.json"
   },
   "license": "MIT",
   "dependencies": {
@@ -13,6 +15,9 @@
     "tslib": "^2.0.0"
   },
   "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^4.14.0",
+    "@typescript-eslint/parser": "^4.14.0",
+    "eslint": "^7.18.0",
     "jasmine-core": "^3.5.0",
     "karma": "^5.1.0",
     "karma-chrome-launcher": "^3.1.0",
@@ -20,7 +25,6 @@
     "karma-jasmine": "^3.3.1",
     "karma-mocha-reporter": "^2.2.5",
     "karma-typescript": "^5.2.0",
-    "tslint": "^6.1.2",
     "typescript": "^3.9.6"
   }
 }
