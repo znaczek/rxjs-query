@@ -1,13 +1,21 @@
 {
   "name": "rxjs-query",
+  "description": "Tool for managing asynchronous data based on RxJS observables.",
   "version": "0.0.1",
+  "repository": {
+    "type" : "git",
+    "url" : "https://github.com/znaczek/rxjs-query"
+  },
+  "homepage": "https://github.com/znaczek/rxjs-query#readme",
+  "license": "MIT",
   "main": "index.js",
+  "files": ["dist/**/*"],
   "scripts": {
     "test": "karma start",
     "lint": "eslint src",
-    "build": "tsc --project tsconfig.build.json"
+    "build": "tsc --project tsconfig.build.json",
+    "postpublish" : "PACKAGE_VERSION=$(cat package.json | grep \\\"version\\\" | head -1 | awk -F: '{ print $2 }' | sed 's/[\",]//g' | tr -d '[[:space:]]') && git tag v$PACKAGE_VERSION && git push --tags"
   },
-  "license": "MIT",
   "dependencies": {
     "@types/jasmine": "^3.6.3",
     "@types/node": "^14.14.22",
