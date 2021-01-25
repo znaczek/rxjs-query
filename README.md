@@ -1,8 +1,8 @@
 # rxjs-query
+[![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/znaczek/rxjs-query/blob/master/LICENSE.txt)
+[![CircleCI](https://circleci.com/gh/znaczek/rxjs-query.svg?style=shield)](https://circleci.com/gh/znaczek/rxjs-query)
 
-Tool for managing asynchronous data based on [RxJS](https://github.com/ReactiveX/rxjs) observables.
-
-[MIT License](LICENSE.txt)
+### Tool for managing asynchronous data based on [RxJS](https://github.com/ReactiveX/rxjs) observables.
 
 ### Features
 - Framework agnostic, depends only on RxjS
