@@ -1,4 +1,5 @@
 # rxjs-query
+[![npm version](https://img.shields.io/npm/v/rxjs-query.svg?style=flat)](https://www.npmjs.com/package/rxjs-query)
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/znaczek/rxjs-query/blob/master/LICENSE.txt)
 [![CircleCI](https://circleci.com/gh/znaczek/rxjs-query.svg?style=shield)](https://circleci.com/gh/znaczek/rxjs-query)
 
