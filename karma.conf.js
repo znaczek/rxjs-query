@@ -1,8 +1,8 @@
 module.exports = function (config) {
   config.set({
-    frameworks: ['jasmine', "karma-typescript"],
+    frameworks: ['jasmine', 'karma-typescript'],
     karmaTypescriptConfig: {
-      tsconfig: "./tsconfig.json",
+      tsconfig: './tsconfig.test.json',
     },
     files: [ 'src/**/*.ts' ],
     preprocessors: {

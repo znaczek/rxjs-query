@@ -1,7 +1,7 @@
 {
   "name": "rxjs-query",
   "description": "Tool for managing asynchronous data based on RxJS observables.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "repository": {
     "type": "git",
     "url": "https://github.com/znaczek/rxjs-query"
