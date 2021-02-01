@@ -3,26 +3,27 @@
   "description": "Tool for managing asynchronous data based on RxJS observables.",
   "version": "0.0.1",
   "repository": {
-    "type" : "git",
-    "url" : "https://github.com/znaczek/rxjs-query"
+    "type": "git",
+    "url": "https://github.com/znaczek/rxjs-query"
   },
   "homepage": "https://github.com/znaczek/rxjs-query#readme",
   "license": "MIT",
-  "main": "index.js",
-  "files": ["dist/**/*"],
+  "main": "dist/index.js",
+  "files": [
+    "dist/**/*"
+  ],
   "scripts": {
     "test": "karma start",
     "lint": "eslint src",
-    "build": "tsc --project tsconfig.build.json",
-    "postpublish" : "PACKAGE_VERSION=$(cat package.json | grep \\\"version\\\" | head -1 | awk -F: '{ print $2 }' | sed 's/[\",]//g' | tr -d '[[:space:]]') && git tag v$PACKAGE_VERSION && git push --tags"
+    "build": "tsc --project tsconfig.build.json"
   },
-  "dependencies": {
-    "@types/jasmine": "^3.6.3",
-    "@types/node": "^14.14.22",
-    "rxjs": "^6.6.0",
-    "tslib": "^2.0.0"
+  "dependencies": {},
+  "peerDependencies": {
+    "rxjs": "^6.6.0"
   },
   "devDependencies": {
+    "@types/jasmine": "^3.6.3",
+    "@types/node": "^14.14.22",
     "@typescript-eslint/eslint-plugin": "^4.14.0",
     "@typescript-eslint/parser": "^4.14.0",
     "eslint": "^7.18.0",
@@ -33,6 +34,7 @@
     "karma-jasmine": "^3.3.1",
     "karma-mocha-reporter": "^2.2.5",
     "karma-typescript": "^5.2.0",
-    "typescript": "^3.9.6"
+    "typescript": "^3.9.6",
+    "tslib": "^2.0.0"
   }
 }
