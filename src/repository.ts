@@ -1,13 +1,7 @@
 import { BehaviorSubject, EMPTY, merge, Observable, Subject } from 'rxjs';
 import { catchError, filter, map, scan, switchMap, takeUntil, tap } from 'rxjs/operators';
-import { isEqual } from 'lodash';
 import { isFunction } from 'rxjs/internal-compatibility';
 
-/**
- * TODO
- * - what will happen, when unsubscribed (0 subscriptions for "$") - will it loose data?
- * - try to unsubscribe, when "$" subscriptions are at size of 0
- */
 export class Repository<
   P, R = P,
   SH extends (response: R, state: SuccessPayload<R, SH>, payload: TypedPayload<P>) => SuccessPayload<R, SH>
@@ -49,7 +43,7 @@ export class Repository<
     } else {
       this.config = new Config(arg);
     }
-    this.cacheChecker = this.config.cache ? isEqual :
+    this.cacheChecker = this.config.cache ? (prev, next) => prev === next :
       isFunction(this.config.shouldCache) ? this.config.shouldCache :
         null;
     this.createDataStream();
