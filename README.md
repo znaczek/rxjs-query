@@ -10,13 +10,13 @@
 - Independent of data transfer layer (http, ws)
 - stale-while-revalidate
 - Available from different places (different services, components etc.)
-- Loading flag + error handling
-- Request cancelation
+- Request status + error handling
+- Request cancellation
 - Caching based on request payload
 - Small bundle footprint
 
 ### Inspirations
-- [reqct-query](https://github.com/tannerlinsley/react-query)
+- [react-query](https://github.com/tannerlinsley/react-query)
 - [NgRx with @ngrx/effect](https://github.com/ngrx/effects)
 
 ## Table of contents
@@ -35,6 +35,7 @@ We also need indication of data loading, error handling, caching, tracking state
 **Rxjs-query provides an additional layer of abstraction over api calls bringing functionality to manage these calls**
 
 Sometimes developers chose redux by default as data management tool, although:
+
 >You might not need redux
 
 A lot of articles can be found over the internet which says exactly this and that documentation won't threat about it.
@@ -56,27 +57,92 @@ In rxjs-query we achieve similar result without overhead of using redux:
 - [events](#) gives us additional opportunity to listen to particular events that happened in the repository.
 
 ## Angular
-Although rxjs-query is framework agnostic, it was developed in context of Angular application.
+Although rxjs-query is framework agnostic, it was developed with Angular usage in minnd.
 That's why it works perfectly Angular HttpClient, but it can be used with any http library.
-The only circumstance is that it needs to operate on RxJs observables or anything that can be switched to observables.
+The only requirement is that it needs to operate on RxJs observables or anything that can be mapped to an observable.
 
 # Concepts
-TODO Describe caller
-Rxjs-query uses a concept of repository. Ihat is a regular JS object containing 3 fields:
-- **$** - the data stream
-- **actions** - set of methods to operate on the repository
-- **events** set of observables that emit events of a repository lifecycle
+The main concern in rxjs-query is `Repository` class. It contains 3 fields:
+- **$** - the data stream representing data being held by a repository.
+It will emit values of type [RepositoryData<T>](#).
+    - **data** (the `T` type variable)- the proper data that are stored. In most cases it will be just the response body from (eventually piped) api call.
+    - **isPending** - boolean flag indicating whether request is pending.
+    - **error** - object containing details about last error. By default, it will be error that is thrown from
+- **actions** - set of methods to operate on the repository,
+- **events** set of observables that emit events of a repository lifecycle.
 
-**$** is the main data stream. It provides declarative stream of data that are being hold by repository:
-- **data** - the proper data that are stored. In most cases it will be just the response body from api call,
-but using **[successHandler](#)** callback we can transform response to any other object.
-- **isPending** - boolean flag indicating whether request is pending
-- **error** - object containing details about last error. By default it will be error that is thrown from
-**[caller](#)**. By using **[errorHandler](#)** error body can be transformed as needed.
-- **progress** - numeric value indicating progress of the request. Defaults to `null`, to track the progress **[progressHandler](#)** that returns number must be provided.
+### Request status
+Combination of three values from RepositoryData: `data`, `isPending` and 'error' we can clearly indicate status of the request:
+TODO add progress
+Initial state
+```
+{
+    data: null,
+    isPending: false,
+    progress: null,
+    error: null
+}
+```
 
-TODO how it's cached (stale-while-revalidate)
-TODO why no status field, describe what are the possible data states
+Initial fetching
+```
+{
+    data: null,
+    isPending: true,
+    progress: null,
+    error: null
+}
+```
+Data successfully fetched
+```
+{
+    data: {<data>},
+    isPending: false,
+    progress: null,
+    error: null
+}
+```
+
+Request resulted with error (first of each subsequent)
+```
+{
+    data: {<data>} || null,
+    isPending: false,
+    progress: null,
+    error: {<error object>}
+}
+```
+
+Subsequent fetch 
+```
+{
+    data: {<data>},
+    isPending: true,
+    progress: null,
+    error: null
+}
+```
+
+Request made a progress
+```
+{
+    data: {<data>},
+    isPending: true,
+    progress: <number>,
+    error: null
+}
+```
+
+Principal is simple:
+- set `isPendinng` to true and null the `error` when request starts,
+- populate `data` on request success, set `isPending` to false, null the `progress`
+- populate `error` on request results with an error,
+- populate `progress` with a number (technically it can be any number but values from <0, 1) makes most sense in terms of indicating progress)).
+
+### Caching - stale-while-revalidate
+TODO
+
+### Command-query separation
 
 In the most basic scenario the api call invocation method must be provided and data stream as observable is available to use,
 that can be controller with a set of methods called actions.

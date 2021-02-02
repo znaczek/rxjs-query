@@ -13,6 +13,7 @@
     "dist/**/*"
   ],
   "scripts": {
+    "installPeerDependencies": "npm install --no-save \"rxjs@$(node rxjs-version.js)\"",
     "test": "karma start",
     "lint": "eslint src",
     "build": "tsc --project tsconfig.build.json"
