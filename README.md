@@ -21,10 +21,10 @@
 
 ## Table of contents
 
-- [Motivation](#Motivation)
-- [Concepts](#Concepts)
+- [Motivation](#motivation)
+- [Concepts](#concepts)
 - [Api](#api)
-- [Examples](#Examples)
+- [Examples](#examples)
 
 
 # Motivation
@@ -160,10 +160,10 @@ Error object can we whatever the request throws when request observable emits an
 
 
 # Api
-### Config
+## Config
 We pass a configuration while constructing Repository
-```
-export class Config<P, R, SH, EH> {
+```typescript
+class Config<P, R, SH, EH> {
   caller: Caller<P, R>;
   initData: SuccessPayload<R, SH>;
   cache = false;
@@ -176,82 +176,87 @@ export class Config<P, R, SH, EH> {
 ```
 Not entire object can be passed. Only the values that we want to set/override needs to be present.
 
-##### caller
+### caller
 Function that returns data source observable emitting the data. Can be passed as a `caller` property in config parameter:
+```typescript
+new Repository ({caller: () => {}});
 ```
-new Repository ({caller: () => {}))
-```
-or with a shorthand syntax if no other property is passed.
-```
+or with a shorthand syntax if no other configuration property is passed.
+```typescript
 new Repository (() => {})
 ```
 **NOTICE:** Error handling using `catchError` can't be done inside this function.
 Error from the returned observable will be handled in the Repository itself.
 To intercept and modify error object use [errorHandler](#errorhandler)
 
-##### innitData
+### innitData
 By default, Repository is initialised with `null`. We can change initial data seed with `initData`.
 
-##### cache
-Boolean flag indicating whether instead of invoking the caller, the last result should be emitted.
+### cache
+Boolean flag turning on/off caching of calls.
 
-##### shouldCache
+### shouldCache
 Callback predicate that based on the previous payload and current payload decides whether to use cache.
+If it returns `true` caller is not invoked and the previous data is emitted on '$'. Otherwise, works as usually.
 Works only when `cache=true`.
 
-##### cacheTimeout
-Additional numeric value in ms to invalidate the cache.
+### cacheTimeout
+Additional numeric value to control cache mechanism.
+After that time (in ms) cache is invalidated regardless of result of `shouldCache` hence the caller will be invoked with next `start` action.
 
-##### progressHandler
-Callback that is used to track request progress. To do so the data source observable must not emit one value and close.
-It must first emit events that indicate progress and as the last emitted value.
-The contract is that for progress event `progressHandler` returns a number representing progress and `null`, when the request finished.
+### progressHandler
+Callback used to track request progress. To do so the data source observable can not just emit single value and close.
+It must first emit events that indicate progress and emit the call result as the last value.
+`progressHandler` contract states:
+- return a number representing progress when progress emits an event, 
+- return `null` when the request finished.
 
-##### successHandler
-Callback where the data received from can be mapped before store in Repository.
+### successHandler
+Used to map callel result before it gets stored in Repository.
+
 **NOTICE:** In most of the cases the data can be mapped using `.pipe` on the data source observable.
 Use case for `successHandler` is when we are using `progressHandler` and want to map the value as the las emitted event.
 
-##### errorHandler
+### errorHandler
 Callback where we can map the request error to any object that we want to be populated in the `error` field.
 
-### $
+## $
 The data stream itself. Explained in more detail in [concepts](#concepts) section.
 
-### Actions
-##### start
+## Actions
+### start
 Action that starts the request. Under the hood the caller function will be called.
 Under the hood it uses `switchMap` operator, so if a request is still pending, next start invocation will cancel the pending one.
 
-##### reset
+### reset
 Will emit on `$` the initial state. Cancels the outgoing request.
 
-##### cleanError
+### cleanError
 Cleans the error. Helpful when we want to clear only the error without clearing the last emitted data.
 
-##### cancel
+### cancel
 Cancels the request only.
 
 ### Events
-##### start$
+### start$
 Emits when `start` method is called. Payload parameter is the same that we will receive in caller.
 
-##### progress$
+### progress$
 Emits value returned by `progressHandler` when caller emits progress event.
 
-##### success$
+### success$
 Emits when request ends successfully.
 
-##### successCached$
+### successCached$
 Emits the last value after `start` method was called but `shouldCache` method returns true.
 
-##### error$
+### error$
 Emits when caller throws an error. Populated with the error or return of `errorHandler`.
 
-##### cancel$
+### cancel$
 Emits when `cancel` method is called.
 
-##### reset$
+### reset$
 Emits when `reset` method is called.
 
 
@@ -260,7 +265,7 @@ Presented below example is written in Angular but show the overall idea of how t
 Classes are simplified to emphasise only the logic around Repository usage.
 
 Let's analyse a simple scenario:
-- we have 2 smart components list and form,
+- we have 2 smart components (responsible for communication with backend) list and form,
 - in the list view we have one add button and edit button in each list row,
 - add and edit button opens form in a dialog,
 - after form submission list should be refreshed.
@@ -274,7 +279,7 @@ class TodosRepository {
     public list = new Repository(() => this.http.get('/api/todos/'));
     public save = new Repository((payload) => {
         if (payload.id) {
-            return this.http.put('/api/todos', payload);
+            return this.http.put(`/api/todos/${payload.id}`, payload);
         } else {
             return this.http.post('/api/todos', payload);
         }
@@ -311,8 +316,8 @@ class ListComponent {
 
 }
 ```
-Here we see, that on the initialisation of the component we fetch the data for the first time.
-Then after successful save the list is refreshed.
+Here we can see, that on the initialisation of the component we fetch the data for the first time.
+Then after a successful save the list is refreshed.
 So in list component we listen to save event without worrying who and when is doing the save.
 
 Html could look like:
@@ -335,4 +340,4 @@ class FormComponent {
 }
 ```
 Here we don't initiate any request on the component initialisation. We only invoke save action on form submit.
-After the request finishes the `events.success$` emits an event that is capture in ListComponent.
+After the request finishes the `events.success$` emits and that in turns is captured in ListComponent.

@@ -68,9 +68,9 @@ export class Repository<
         scan((acc: { payload: TypedPayload<P>, shouldUseCache: boolean }, current: TypedPayload<P>) => {
           const previousPayload = acc.payload;
           const shouldUseCache =
+            this.lastCallTimestamp + this.config.cacheTimeout >= Date.now() &&
             this.cacheChecker &&
-            this.cacheChecker(previousPayload, current) &&
-            this.lastCallTimestamp + this.config.cacheTimeout >= Date.now();
+            this.cacheChecker(previousPayload, current);
           if (shouldUseCache) {
             this._events.successCached$.next(this.data$.getValue().data);
           }
